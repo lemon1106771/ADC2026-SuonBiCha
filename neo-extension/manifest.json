@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Neo — Your work, at your pace",
+  "version": "0.2.0",
+  "description": "A calm work companion. Holds your place, explains changes, and helps you focus on one thing at a time.",
+  "action": { "default_popup": "popup.html", "default_title": "Open Neo" },
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js" },
+  "commands": {
+    "summon-neo": { "suggested_key": { "default": "Alt+Shift+N" }, "description": "Summon Neo beside your cursor" }
+  },
+  "content_scripts": [{ "matches": ["http://*/*", "https://*/*"], "js": ["companion-config.js", "content.js"], "run_at": "document_idle" }],
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'self'" }
+}

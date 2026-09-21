@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Neo</title><link rel="stylesheet" href="dashboard.css"><link rel="stylesheet" href="popup.css"><script src="companion-config.js" defer></script><script src="popup.js" defer></script></head>
+<body class="popup"><div class="brand"><span class="face" aria-hidden="true"><i></i></span>neo<span class="brand-dot">✳</span></div><h1>A little help.<br>Right beside you.</h1><p>Actions and chat, near your cursor.</p>
+<button class="primary" id="summon">Summon Neo <span>Alt + Shift + N</span></button>
+<p id="popup-status" role="status">Works on normal websites. Refresh existing tabs after updating Neo.</p>
+<div class="settings"><label><span>Neo on websites</span><input id="enabled" type="checkbox"></label><label><span>Follow my cursor</span><input id="followCursor" type="checkbox"></label><label><span>Offer help proactively</span><input id="proactive" type="checkbox"></label><label><span>Demo timing <small>8-second drift · 20-second pause</small></span><input id="demoMode" type="checkbox"></label><label><span>AI chat <small>Requires the local AI server</small></span><input id="aiEnabled" type="checkbox"></label></div>
+<small id="ai-disclosure">When AI chat is on, messages and any text you explicitly attach are sent to OpenAI through your local server.</small>
+<div class="popup-actions"><button id="resume" class="text-button">Resume nudges</button><button id="shortcuts" class="text-button">Shortcut settings</button></div>
+<button class="secondary" id="open-workspace">Open demo workspace ↗</button><small id="extension-id"></small>
+</body></html>
