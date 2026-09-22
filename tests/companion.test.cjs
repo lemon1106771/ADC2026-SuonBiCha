@@ -12,20 +12,36 @@ async function companion(options = {}) {
   const dom = new JSDOM('<!doctype html><body><p id="work">First sentence. Second sentence.</p><p id="other">Another task</p><input id="name"><input id="secret" type="password"></body>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://example.com' });
   const w = dom.window, d = w.document;
   let root, now = 1000, hidden = false, focused = true, intervals = new Map(), nextId = 0;
-  let settings = { demoMode: true, ...options.settings }, task = options.task || null;
+  let settings = { demoMode: true, ...options.settings }, task = options.task || null, checkpoints = [], activeId = null, captureWasHidden = false;
   const messages = [], messageListeners = new Set(), storageListeners = new Set();
   const attach = w.Element.prototype.attachShadow;
   w.Element.prototype.attachShadow = function (args) { root = attach.call(this, args); return root; };
   w.Date.now = () => now; w.setInterval = fn => { intervals.set(++nextId, fn); return nextId; }; w.clearInterval = id => intervals.delete(id);
   w.requestAnimationFrame = fn => { fn(); return 0; }; w.cancelAnimationFrame = () => {};
-  w.HTMLElement.prototype.scrollIntoView = function () { this.dataset.scrolled = 'true'; }; w.scrollTo = () => {};
+  w.HTMLElement.prototype.scrollIntoView = function () { this.dataset.scrolled = 'true'; }; w.scrollTo = options.scrollTo || (() => {});
+  d.elementFromPoint = () => d.getElementById('work'); w.confirm = () => true;
+  w.createImageBitmap = async () => ({ width: 1000, height: 800, close() {} });
+  w.HTMLCanvasElement.prototype.getContext = () => ({ drawImage() {} });
+  w.HTMLCanvasElement.prototype.toDataURL = () => 'data:image/webp;base64,dGVzdA==';
   Object.defineProperty(d, 'hidden', { get: () => hidden }); d.hasFocus = () => focused;
   w.chrome = {
     runtime: { onMessage: { addListener: fn => messageListeners.add(fn), removeListener: fn => messageListeners.delete(fn) }, sendMessage: async message => {
       messages.push(JSON.parse(JSON.stringify(message)));
       if (message.type === 'neo:state') return { ok: true, settings, task, isTaskTab: task?.tabId === 1 };
-      if (message.type === 'neo:pin') task = { tabId: 1, pinnedAt: now };
-      if (message.type === 'neo:unpin') task = null;
+      if (message.type === 'neo:checkpoint-list') return { ok: true, items: checkpoints, activeId };
+      if (message.type === 'neo:checkpoint-capture') { captureWasHidden = d.getElementById('neo-companion-root').style.visibility === 'hidden'; return { ok: true, image: 'data:image/png;base64,dGVzdA==' }; }
+      if (message.type === 'neo:checkpoint-save') {
+        const item = { ...message, id: `checkpoint-${checkpoints.length + 1}`, url: 'https://example.com', tabId: 1, createdAt: now, pinnedAt: now };
+        checkpoints.unshift(item); activeId = item.id; task = item; return { ok: true, checkpoint: item };
+      }
+      if (message.type === 'neo:checkpoint-return') {
+        const item = checkpoints.find(entry => entry.id === (message.id || activeId));
+        if (item) for (const fn of messageListeners) fn({ type: 'neo:checkpoint-restore', checkpoint: item }, {}, () => {});
+        return { ok: !!item };
+      }
+      if (message.type === 'neo:checkpoint-select') { activeId = message.id; task = checkpoints.find(item => item.id === activeId); return { ok: true }; }
+      if (message.type === 'neo:checkpoint-delete') { checkpoints = checkpoints.filter(item => item.id !== message.id); activeId = checkpoints[0]?.id || null; task = checkpoints[0] || null; return { ok: true }; }
+      if (message.type === 'neo:pending-restore') return { ok: true, checkpoint: null };
       if (message.type === 'neo:chat') return options.chatResponse || { ok: true, reply: '<img src=x onerror=alert(1)> Try one step.' };
       return { ok: true };
     } },
@@ -35,7 +51,7 @@ async function companion(options = {}) {
   };
   w.eval(source('companion-config.js')); w.eval(source('content.js')); await settle();
   return {
-    w, d, messages, get root() { return root; }, $: id => root.getElementById(id), click: id => root.getElementById(id).click(),
+    w, d, messages, get root() { return root; }, get captureWasHidden() { return captureWasHidden; }, $: id => root.getElementById(id), click: id => root.getElementById(id).click(),
     summon() { for (const fn of messageListeners) fn({ type: 'neo:summon' }, {}, () => {}); },
     async advance(ms) { now += ms; for (const fn of intervals.values()) fn(); await settle(); },
     async settings(patch) { settings = { ...settings, ...patch }; for (const fn of storageListeners) fn({ neoSettings: { newValue: settings } }, 'local'); await settle(); },
@@ -56,9 +72,21 @@ test('cursor companion summons, freezes while open, and preserves the page', asy
   assert.equal(s.$('panel').hidden, false); assert.equal(s.$('chat-section').open, true);
   s.d.getElementById('other').dispatchEvent(new s.w.MouseEvent('pointermove', { bubbles: true, clientX: 700, clientY: 400 }));
   assert.equal(s.$('mascot').style.left, '424px');
-  s.click('hold'); await settle(); assert.ok(s.messages.some(m => m.type === 'neo:pin'));
-  s.click('restore'); assert.equal(s.d.getElementById('work').dataset.scrolled, 'true');
+  s.click('hold'); assert.equal(s.$('capture-layer').hidden, false);
+  s.$('capture-layer').dispatchEvent(new s.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await settle();
+  assert.ok(s.messages.some(m => m.type === 'neo:checkpoint-capture')); assert.equal(s.captureWasHidden, true); assert.equal(s.$('capture-form').hidden, false);
+  s.$('capture-form').dispatchEvent(new s.w.Event('submit', { bubbles: true, cancelable: true })); await settle();
+  assert.ok(s.messages.some(m => m.type === 'neo:checkpoint-save'));
+  s.click('restore'); await settle(); assert.ok(s.messages.some(m => m.type === 'neo:checkpoint-return'));
   assert.equal(s.d.getElementById('work').style.cssText, ''); s.dispose();
+});
+test('capture can be adjusted and cancelled with the keyboard without saving', async () => {
+  const s = await companion(); s.summon(); s.click('hold');
+  const before = s.$('capture-box').style.left;
+  s.$('capture-layer').dispatchEvent(new s.w.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  assert.notEqual(s.$('capture-box').style.left, before);
+  s.$('capture-layer').dispatchEvent(new s.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(s.$('capture-layer').hidden, true); assert.equal(s.messages.some(message => message.type === 'neo:checkpoint-save'), false); s.dispose();
 });
 test('cross-tab drift waits for the threshold and never steals keyboard focus', async () => {
   const s = await companion({ task: { tabId: 2, pinnedAt: 100 } });
@@ -66,7 +94,7 @@ test('cross-tab drift waits for the threshold and never steals keyboard focus', 
   await s.advance(1000); await s.advance(7999); assert.equal(s.$('panel').hidden, true);
   await s.advance(1); assert.equal(s.$('panel').hidden, false); assert.match(s.$('message').textContent, /pinned task/);
   assert.equal(s.d.activeElement, input); assert.equal(s.$('return-task').hidden, false);
-  s.click('return-task'); await settle(); assert.ok(s.messages.some(m => m.type === 'neo:return')); s.dispose();
+  s.click('return-task'); await settle(); assert.ok(s.messages.some(m => m.type === 'neo:checkpoint-return')); s.dispose();
 });
 test('snooze prevents nudges but leaves manual summoning available; off really hides the host', async () => {
   const s = await companion(); s.summon(); s.click('snooze'); await settle(); await s.advance(30000);
@@ -102,7 +130,7 @@ test('focus-area selection is reversible and does not change website styles', as
   s.d.dispatchEvent(new s.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); assert.equal(s.$('highlight').hidden, true); s.dispose();
 });
 test('offline chat invokes local actions and never makes an AI request', async () => {
-  const s = await companion(); s.summon(); await s.chat('hold my place'); assert.ok(s.messages.some(m => m.type === 'neo:pin'));
+  const s = await companion(); s.summon(); await s.chat('hold my place'); assert.equal(s.$('capture-layer').hidden, false); s.$('capture-layer').dispatchEvent(new s.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await s.chat('Explain gravity'); assert.match(s.$('chat-log').textContent, /enable AI chat/);
   assert.equal(s.messages.some(m => m.type === 'neo:chat'), false); s.dispose();
 });
@@ -128,24 +156,48 @@ function background(storage = { local: {}, session: {} }, overrides = {}) {
     runtime: { id: 'a'.repeat(32), onMessage: { addListener: fn => events.message = fn } },
     commands: { onCommand: { addListener: fn => events.command = fn } },
     storage: Object.fromEntries(['local', 'session'].map(area => [area, {
-      get: async key => ({ [key]: storage[area][key] }), set: async value => Object.assign(storage[area], value), remove: async key => { delete storage[area][key]; }
+      get: async key => Object.fromEntries((Array.isArray(key) ? key : [key]).map(name => [name, storage[area][name]])), set: async value => Object.assign(storage[area], value), remove: async key => { delete storage[area][key]; }
     }])),
-    tabs: { query: async () => [{ id: 4 }], sendMessage: async (...args) => sent.push(args), update: async (id, data) => { updates.push({ id, ...data }); return { windowId: 2 }; }, onRemoved: { addListener: fn => events.removed = fn } },
+    tabs: { query: async () => [{ id: 4 }], get: async id => ({ id, url: 'https://example.com/page', windowId: 2 }), create: async data => ({ id: 14, windowId: 2, ...data }), sendMessage: async (...args) => sent.push(args), update: async (id, data) => { updates.push({ id, ...data }); return { id, windowId: 2 }; }, onRemoved: { addListener: fn => events.removed = fn }, onUpdated: { addListener: fn => events.updated = fn }, captureVisibleTab: async () => 'data:image/png;base64,dGVzdA==' },
     windows: { update: async () => {} }, scripting: { executeScript: async () => {} }
   };
   Object.assign(chrome.tabs, overrides.tabs); Object.assign(chrome.scripting, overrides.scripting);
-  const context = vm.createContext({ chrome, console, AbortSignal, Date, fetch: overrides.fetch || (() => { throw new Error('Unexpected network'); }) });
+  const context = vm.createContext({ chrome, console, AbortSignal, Date, crypto: require('node:crypto').webcrypto, fetch: overrides.fetch || (() => { throw new Error('Unexpected network'); }) });
   context.importScripts = file => vm.runInContext(source(file), context);
   vm.runInContext(source('background.js'), context);
-  return { events, sent, updates, request(message, tabId) { return new Promise(resolve => events.message(message, { id: chrome.runtime.id, ...(tabId !== undefined ? { tab: { id: tabId } } : {}) }, resolve)); } };
+  return { events, sent, updates, request(message, tabId) { return new Promise(resolve => events.message(message, { id: chrome.runtime.id, ...(tabId !== undefined ? { tab: { id: tabId, url: 'https://example.com/page', windowId: 2 } } : {}) }, resolve)); } };
 }
-test('pinned task survives worker restart and return activates the correct tab', async () => {
+test('saved checkpoint survives worker restart and return activates the correct tab', async () => {
   const storage = { local: {}, session: {} }; const first = background(storage);
-  await first.request({ type: 'neo:pin' }, 7);
+  const saved = await first.request({ type: 'neo:checkpoint-save', name: 'Report', image: 'data:image/webp;base64,dGVzdA==', rect: { x: 20, y: 40, width: 120, height: 80 }, scrollX: 0, scrollY: 0, locator: 'p:nth-of-type(1)' }, 7);
+  assert.equal(saved.ok, true);
   const second = background(storage); const state = await second.request({ type: 'neo:state' }, 9);
   assert.equal(state.task.tabId, 7); assert.equal(state.isTaskTab, false);
-  await second.request({ type: 'neo:return' }, 9); assert.equal(second.updates[0].id, 7);
-  await second.events.removed(7); assert.equal(storage.session.neoTask, undefined);
+  await second.request({ type: 'neo:checkpoint-return' }, 9); assert.equal(second.updates[0].id, 7);
+  await second.events.removed(7); assert.equal(storage.local.neoCheckpoints.length, 1);
+});
+test('checkpoint capture requires the active tab and restores by reopening a closed page', async () => {
+  const storage = { local: {}, session: {} };
+  let restoreAttempts = 0;
+  const b = background(storage, { tabs: { query: async () => [{ id: 7 }], get: async () => { throw new Error('closed'); }, sendMessage: async () => { if (!restoreAttempts++) throw new Error('loading'); } }, scripting: { executeScript: async () => { throw new Error('loading'); } } });
+  assert.equal((await b.request({ type: 'neo:checkpoint-capture' }, 7)).ok, true);
+  assert.match((await b.request({ type: 'neo:checkpoint-capture' }, 8)).error, /active/);
+  await b.request({ type: 'neo:checkpoint-save', name: 'Place', image: 'data:image/webp;base64,dGVzdA==', rect: { x: 20, y: 40, width: 120, height: 80 }, scrollX: 0, scrollY: 0, locator: '' }, 7);
+  const result = await b.request({ type: 'neo:checkpoint-return' }, 9);
+  assert.equal(result.reopened, true); assert.equal(storage.session.neoPendingRestore.tabId, 14);
+  await b.events.updated(14, { status: 'complete' }); assert.equal(storage.session.neoPendingRestore, undefined);
+});
+test('checkpoint storage stays local, has a clear limit, and supports deletion', async () => {
+  const storage = { local: {}, session: {} }, b = background(storage);
+  const capture = { type: 'neo:checkpoint-save', name: 'My place', image: 'data:image/webp;base64,dGVzdA==', rect: { x: 20, y: 40, width: 120, height: 80 }, scrollX: 0, scrollY: 0, locator: 'p:nth-of-type(1)', locatorOffsetY: 4 };
+  const result = await b.request(capture, 7);
+  assert.equal(result.ok, true); assert.equal(storage.local.neoCheckpoints[0].locatorOffsetY, 4);
+  assert.equal('text' in storage.local.neoCheckpoints[0], false);
+  storage.local.neoCheckpoints.push(...Array.from({ length: 11 }, (_, index) => ({ ...storage.local.neoCheckpoints[0], id: `other-${index}` })));
+  assert.match((await b.request(capture, 7)).error, /Delete one/);
+  assert.equal((await b.request({ type: 'neo:checkpoint-delete', id: result.checkpoint.id }, 7)).ok, true);
+  assert.equal(storage.local.neoCheckpoints.length, 11);
+  assert.equal((await b.request(capture, 7)).ok, true);
 });
 test('summon injects into an existing tab and reports a restricted-page failure', async () => {
   let injected = 0, attempts = 0;

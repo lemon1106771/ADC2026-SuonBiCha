@@ -5,7 +5,7 @@
   "description": "A calm work companion. Holds your place, explains changes, and helps you focus on one thing at a time.",
   "action": { "default_popup": "popup.html", "default_title": "Open Neo" },
   "permissions": ["storage", "activeTab", "scripting"],
-  "host_permissions": ["http://127.0.0.1/*"],
+  "host_permissions": ["http://*/*", "https://*/*", "http://127.0.0.1/*"],
   "background": { "service_worker": "background.js" },
   "commands": {
     "summon-neo": { "suggested_key": { "default": "Alt+Shift+N" }, "description": "Summon Neo beside your cursor" }

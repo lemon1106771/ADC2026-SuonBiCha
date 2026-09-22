@@ -87,7 +87,7 @@ test('popup opens the bundled extension workspace', async () => {
 });
 test('manifest and asset references are local and present', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));
-  assert.equal(manifest.manifest_version, 3); assert.deepEqual(manifest.host_permissions, ['http://127.0.0.1/*']);
+  assert.equal(manifest.manifest_version, 3); assert.deepEqual(manifest.host_permissions, ['http://*/*', 'https://*/*', 'http://127.0.0.1/*']);
   assert.deepEqual(manifest.content_scripts[0].matches, ['http://*/*', 'https://*/*']);
   for (const file of [...manifest.content_scripts[0].js, manifest.background.service_worker]) assert.equal(fs.existsSync(path.join(root, file)), true);
   for (const page of ['dashboard.html', 'popup.html']) {

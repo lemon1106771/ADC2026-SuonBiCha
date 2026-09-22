@@ -15,10 +15,10 @@ Reload the extension after changing code, then reopen its workspace. Opening `da
 
 The website companion has both quick actions and chat:
 
-- **Hold my place** stores only the current tab ID and a local DOM anchor. **Return to my task** activates that tab later. It never stores page text or form values.
+- **Capture an area** lets you drag a region (or use arrows, Shift + arrows, and Enter), review its screenshot, name it, and save a checkpoint. **Saved** lists up to 12 local checkpoints. **Return** activates the matching tab or reopens its URL, then highlights the saved region; if the page has changed, the position may be approximate. Escape cancels capture.
 - **Focus an area** lets you click a paragraph or field; Neo highlights it and dims the rest of the page. Escape or **Clear focus** restores the page.
 - **Read my selection** formats text you selected in the page. It stays local.
-- Chat understands local commands such as “hold my place”, “focus an area”, “read my selection”, “show my place”, and “snooze”.
+- Chat understands local commands such as “capture an area”, “focus an area”, “read my selection”, “show my place”, and “snooze”. Capture, Saved, and Chat have separate views in the compact website panel.
 - **Attach selection** is an explicit opt-in. Nothing from the page is attached to chat until you press it.
 - **Quiet for 10 min** stops proactive nudges. **Follow my cursor**, **Offer help proactively**, and **Demo timing** are available in the toolbar popup.
 
@@ -46,8 +46,8 @@ Proposal palette; bundled Manrope font with its open font license; keyboard focu
 
 Use Node.js 22 or newer. Run `npm ci` then `npm test` for behavioral, package, and local HTTP server checks (development only; the extension itself needs no install). These cover drift thresholds, calendar changes, meeting stages, Spotlight, reset, cursor actions, settings races, snooze/resume, chat boundaries, and proxy failures. Proxy tests mock the AI provider; they do not use a real key or incur API charges.
 
-The server listens only on `127.0.0.1:4318`. Settings persist in local extension storage. The pinned tab ID persists for the browser session; the exact held element, selection, and conversation live only in the page and disappear on reload. Normal website access is required for the companion; the additional localhost permission is for the optional AI proxy.
+The server listens only on `127.0.0.1:4318`. Settings and screenshots persist in local extension storage on this device until deleted. Each screenshot is reduced before saving; if space runs out, Neo asks you to delete a checkpoint and does not erase one automatically. Checkpoints save a URL, coordinates, and a structural locator, but not extracted page text or form values. Chat history and text selection disappear on reload, and screenshots are never sent to AI automatically. HTTP/HTTPS host access is needed for in-page capture; localhost access is for the optional AI proxy.
 
-For a short browser-wide demo, enable **Demo timing**, summon Neo on a website, choose **Hold my place**, then switch to a different website tab for at least 9 seconds. Neo offers to return to the pinned task. To show the form nudge, focus a non-password field and wait 12 seconds without typing. Quiet mode and the cooldown suppress repeated nudges; use **Resume nudges** or start a fresh tab for another rehearsal.
+For a short browser-wide demo, enable **Demo timing**, summon Neo on a website, choose **Capture an area**, drag a region, review and save it, then switch to a different website tab for at least 9 seconds. Neo offers to return to the saved checkpoint. To show the form nudge, focus a non-password field and wait 12 seconds without typing. Quiet mode and the cooldown suppress repeated nudges; use **Resume nudges** or start a fresh tab for another rehearsal.
 
 Automated verification covers the extension behavior in a simulated DOM. Actual unpacked Chrome loading, visual layout, and real cross-site injection still need the manual rehearsal above; no connected browser was available in this build session.

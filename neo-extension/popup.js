@@ -16,17 +16,22 @@ async function init() {
     const stored = await chrome.storage.local.get('neoSettings'); settings = { ...settings, ...stored.neoSettings };
     for (const name of settingNames) document.getElementById(name).checked = settings[name];
     if (settings.snoozeUntil > Date.now()) status.textContent = 'Proactive nudges are snoozed. You can still summon Neo.';
+    const saved = await chrome.storage.local.get('neoCheckpoints');
+    document.getElementById('checkpoint-count').textContent = String(saved.neoCheckpoints?.length || 0);
   } catch { status.textContent = 'Refresh the extension to reconnect.'; }
   document.getElementById('extension-id').textContent = `Extension ID: ${chrome.runtime.id}`;
 }
 for (const name of settingNames) document.getElementById(name).addEventListener('change', event => save({ [name]: event.target.checked }));
-document.getElementById('summon').addEventListener('click', async () => {
+async function launch(type) {
   await save({ enabled: true }); document.getElementById('enabled').checked = true;
   try {
-    const result = await chrome.runtime.sendMessage({ type: 'neo:summon-active' });
+    const result = await chrome.runtime.sendMessage({ type });
     if (result?.ok) window.close(); else status.textContent = result?.error || 'Refresh this website and try again.';
   } catch { status.textContent = 'Refresh the extension and try again.'; }
-});
+}
+document.getElementById('summon').addEventListener('click', () => launch('neo:summon-active'));
+document.getElementById('capture').addEventListener('click', () => launch('neo:capture-active'));
+document.getElementById('open-saved').addEventListener('click', () => launch('neo:saved-active'));
 document.getElementById('resume').addEventListener('click', async () => { await save({ snoozeUntil: 0 }); status.textContent = 'Nudges resumed when proactive help is enabled.'; });
 document.getElementById('shortcuts').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }));
 document.getElementById('open-workspace').addEventListener('click', async () => { await chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') }); window.close(); });
