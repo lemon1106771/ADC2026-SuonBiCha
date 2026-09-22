@@ -12,7 +12,8 @@ let meeting = { start: '11:00', end: '11:30', people: ['Lan', 'Alex'] };
 const headings = {
   report: ['A LITTLE LESS FRICTION', 'Find your focus.', 'One thing in front of you. A little support beside you.', 'Minh'],
   calendar: ['A LITTLE MORE CERTAINTY', 'Make room for your day.', 'When plans change, you deserve a clear explanation.', 'Lan'],
-  onboarding: ['A LITTLE LESS NOISE', 'Just this next step.', 'The rest can wait while you focus on what’s in front of you.', 'Lan']
+  onboarding: ['A LITTLE LESS NOISE', 'Just this next step.', 'The rest can wait while you focus on what’s in front of you.', 'Lan'],
+  chat: ['A LITTLE HELP, WHEN YOU ASK', 'Chat with Neo.', 'Talk through one next step at a time.', 'Neo']
 };
 function changeView(next) {
   view = next; document.body.dataset.view = next; awaySince = null; Neo.rest();
@@ -20,12 +21,42 @@ function changeView(next) {
   document.querySelectorAll('.nav-item').forEach(el => { const active = el.dataset.view === next; el.classList.toggle('active', active); if (active) el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current'); });
   const [eyebrow, title, subtitle, person] = headings[next];
   $('eyebrow').textContent = eyebrow; $('page-title').textContent = title; $('page-subtitle').textContent = subtitle;
-  $('profile-name').textContent = `${person}’s workspace`; $('profile-avatar').textContent = person[0];
+  $('profile-name').textContent = next === 'chat' ? 'Your workspace' : `${person}’s workspace`; $('profile-avatar').textContent = next === 'chat' ? 'N' : person[0];
   $('simulate-meeting').hidden = next !== 'report'; $('simulate-change').hidden = next !== 'calendar'; $('spotlight-hint').hidden = next !== 'onboarding';
-  $('demo-hint').textContent = next === 'report' ? 'Try another browser tab for 8 seconds, then return.' : next === 'calendar' ? 'Each click changes the meeting again.' : 'A real focus event, for every field.';
+  $('demo-hint').textContent = next === 'report' ? 'Try another browser tab for 8 seconds, then return.' : next === 'calendar' ? 'Each click changes the meeting again.' : next === 'onboarding' ? 'A real focus event, for every field.' : 'Messages are sent only when you press Send.';
   clearSpotlight();
 }
 document.querySelectorAll('.nav-item').forEach(el => el.addEventListener('click', () => changeView(el.dataset.view)));
+let chatHistory = [], chatBusy = false, chatEpoch = 0;
+function chatLine(role, content) {
+  $('workspace-chat-log').querySelector('.chat-intro')?.remove();
+  const line = document.createElement('p'); line.className = `workspace-chat-line ${role}`;
+  const name = document.createElement('strong'); name.textContent = role === 'user' ? 'You' : 'Neo';
+  line.append(name, document.createTextNode(content)); $('workspace-chat-log').append(line);
+  $('workspace-chat-log').scrollTop = $('workspace-chat-log').scrollHeight;
+}
+$('workspace-chat-clear').addEventListener('click', () => {
+  chatEpoch++; chatBusy = false; chatHistory = []; $('workspace-chat-log').replaceChildren();
+  $('workspace-chat-input').value = ''; $('workspace-chat-send').disabled = false;
+  $('workspace-chat-status').textContent = 'Chat cleared from this tab.';
+});
+$('workspace-chat-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const content = $('workspace-chat-input').value.trim();
+  if (!content || chatBusy) return;
+  chatBusy = true; const epoch = chatEpoch; $('workspace-chat-send').disabled = true;
+  $('workspace-chat-status').textContent = 'Neo is thinking…';
+  const messages = [...chatHistory.slice(-8), { role: 'user', content }];
+  let result;
+  try { result = await chrome.runtime.sendMessage({ type: 'neo:chat', messages }); }
+  catch { result = { ok: false, error: 'AI chat is unavailable. Reload the extension and try again.' }; }
+  if (epoch !== chatEpoch) return;
+  chatBusy = false; $('workspace-chat-send').disabled = false;
+  if (!result?.ok) { $('workspace-chat-status').textContent = result?.error || 'AI chat is unavailable. Check the local server.'; return; }
+  chatHistory = [...messages, { role: 'assistant', content: result.reply }];
+  chatLine('user', content); chatLine('assistant', result.reply);
+  $('workspace-chat-input').value = ''; $('workspace-chat-status').textContent = 'Reply received.';
+});
 // Minh can choose the exact paragraph to return to; the draft is a valid anchor too.
 function holdPlace(el) { document.querySelectorAll('.current-line').forEach(line => line.classList.remove('current-line')); lastLine = el; el.classList.add('current-line'); $('place-label').textContent = el.id === 'report-draft' ? 'Your next thought' : el.textContent.startsWith('This quarter') || el.textContent.startsWith('Our team') ? '01 · The overview' : '02 · What we’re learning'; }
 document.querySelectorAll('.report-line, #report-draft').forEach(el => { el.addEventListener('focus', () => holdPlace(el)); el.addEventListener('click', () => holdPlace(el)); });
@@ -72,8 +103,7 @@ $('onboarding-form').addEventListener('focusout', () => { queueMicrotask(() => {
 document.addEventListener('pointerdown', event => { if (view === 'onboarding' && !event.target.closest('.field')) { clearSpotlight(); Neo.rest(); } });
 $('onboarding-form').addEventListener('submit', event => { event.preventDefault(); clearSpotlight(); Neo.rest(); $('form-status').textContent = 'Demo details kept in this tab. You can keep editing.'; });
 $('restart').addEventListener('click', () => {
-  resetBackup = { draft: $('report-draft').value, fields: [...document.querySelectorAll('#onboarding-form input')].map(input => [input.id, input.value]) };
-  undoReset.hidden = false;
+  $('workspace-chat-clear').click();
   clearInterval(meetingTimer); meetingTimer = null; awaySince = null; calendarIndex = 0;
   meeting = { start: '11:00', end: '11:30', people: ['Lan', 'Alex'] }; renderMeeting(); $('change-note').hidden = true;
   $('onboarding-form').reset(); $('form-status').textContent = 'Demo entries stay in this tab until you restart or close it.';

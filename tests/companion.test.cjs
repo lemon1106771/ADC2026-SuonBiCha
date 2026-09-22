@@ -54,7 +54,7 @@ async function companion(options = {}) {
   w.eval(source('companion-config.js')); w.eval(source('content.js')); await settle();
   return {
     w, d, messages, get root() { return root; }, get captureWasHidden() { return captureWasHidden; }, $: id => root.getElementById(id), click: id => root.getElementById(id).click(),
-    summon() { for (const fn of messageListeners) fn({ type: 'neo:summon' }, {}, () => {}); },
+    summon(type = 'neo:summon') { for (const fn of messageListeners) fn({ type }, {}, () => {}); },
     async advance(ms) { now += ms; for (const fn of intervals.values()) fn(); await settle(); },
     async settings(patch) { settings = { ...settings, ...patch }; for (const fn of storageListeners) fn({ neoSettings: { newValue: settings } }, 'local'); await settle(); },
     async visibility(value) { hidden = value; d.dispatchEvent(new w.Event('visibilitychange')); await settle(); },
@@ -203,6 +203,11 @@ test('AI chat sends only typed messages unless selection is explicitly attached;
   assert.match(request.messages.at(-1).content, /First sentence/);
   s.click('clear-chat'); assert.equal(s.$('chat-log').textContent, ''); s.dispose();
 });
+test('direct chat action opens the chat pane and focuses its input', async () => {
+  const s = await companion(); s.summon('neo:open-chat');
+  assert.equal(s.$('pane-chat').hidden, false);
+  assert.equal(s.root.activeElement, s.$('chat-input')); s.dispose();
+});
 test('AI failure stays in chat and leaves actions available; reinjection removes old timers/listeners', async () => {
   const s = await companion({ settings: { aiEnabled: true }, chatResponse: { ok: false, error: 'Server offline.' } });
   s.summon(); await s.chat('Help me plan'); assert.match(s.$('chat-log').textContent, /Server offline/);
@@ -261,9 +266,11 @@ test('checkpoint storage stays local, has a clear limit, and supports deletion',
   assert.equal((await b.request(capture, 7)).ok, true);
 });
 test('summon injects into an existing tab and reports a restricted-page failure', async () => {
-  let injected = 0, attempts = 0;
-  const b = background(undefined, { tabs: { sendMessage: async () => { if (!attempts++) throw new Error('no receiver'); } }, scripting: { executeScript: async () => { injected++; } } });
+  let injected = 0, attempts = 0, lastType;
+  const b = background(undefined, { tabs: { sendMessage: async (_id, message) => { if (!attempts++) throw new Error('no receiver'); lastType = message.type; } }, scripting: { executeScript: async () => { injected++; } } });
   assert.equal((await b.request({ type: 'neo:summon-active' })).ok, true); assert.equal(injected, 1);
+  assert.equal((await b.request({ type: 'neo:chat-active' })).ok, true);
+  assert.equal(lastType, 'neo:open-chat');
   const restricted = background(undefined, { tabs: { sendMessage: async () => { throw new Error('restricted'); } }, scripting: { executeScript: async () => { throw new Error('restricted'); } } });
   assert.match((await restricted.request({ type: 'neo:summon-active' })).error, /cannot appear/);
 });
@@ -272,4 +279,6 @@ test('background refuses AI calls while disabled and handles unavailable server'
   assert.match((await b.request(message, 4)).error, /AI chat is off/);
   const enabled = background({ local: { neoSettings: { aiEnabled: true } }, session: {} }, { fetch: async () => { throw new Error('offline'); } });
   assert.match((await enabled.request(message, 4)).error, /unavailable/);
+  const balance = background({ local: { neoSettings: { aiEnabled: true } }, session: {} }, { fetch: async () => ({ ok: false, json: async () => ({ error: 'DeepSeek balance is empty.' }) }) });
+  assert.match((await balance.request(message, 4)).error, /balance is empty/);
 });

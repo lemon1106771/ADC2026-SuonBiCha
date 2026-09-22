@@ -283,7 +283,7 @@
     host.hidden = !settings.enabled;
     host.style.setProperty('display', settings.enabled ? 'block' : 'none', 'important');
     if (settings.enabled) host.removeAttribute('aria-hidden'); else host.setAttribute('aria-hidden', 'true');
-    $('chat-mode').textContent = settings.aiEnabled ? 'AI enabled · Chat and attachments go to OpenAI.' : 'Local help · AI chat is off';
+    $('chat-mode').textContent = settings.aiEnabled ? 'AI enabled · Chat and attachments go to DeepSeek.' : 'Local help · AI chat is off';
     if (!settings.enabled) { dismiss(false); clearHighlight(); }
     if (!settings.proactive || settings.snoozeUntil > Date.now() || localSnoozeUntil > Date.now()) { if (automatic) dismiss(false); }
     move();
@@ -562,6 +562,7 @@
   };
   const messageListener = (message, sender, respond) => {
     if (message?.type === 'neo:summon') { summon(); respond({ ok: true }); }
+    if (message?.type === 'neo:open-chat') { summon(); showView('chat'); $('chat-input').focus(); respond({ ok: true }); }
     if (message?.type === 'neo:capture') { summon(); beginCapture(); respond({ ok: true }); }
     if (message?.type === 'neo:show-saved') { summon(); showView('saved'); respond({ ok: true }); }
     if (message?.type === 'neo:checkpoint-restore') { restorePlace(message.checkpoint); respond({ ok: true }); }
