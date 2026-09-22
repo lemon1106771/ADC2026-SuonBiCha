@@ -123,9 +123,12 @@ async function handle(message, sender) {
     try {
       const response = await fetch('http://127.0.0.1:4318/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Neo-Extension': chrome.runtime.id },
-        body: JSON.stringify({ messages: history }), signal: AbortSignal.timeout(12_000), credentials: 'omit'
+        body: JSON.stringify({ messages: history }), signal: AbortSignal.timeout(30_000), credentials: 'omit'
       });
-      if (!response.ok) throw new Error('unavailable');
+      if (!response.ok) {
+        const failure = await response.json().catch(() => ({}));
+        return { ok: false, error: typeof failure.error === 'string' && failure.error.length <= 180 ? failure.error : 'AI chat is unavailable. Check the local server.' };
+      }
       const result = await response.json();
       if (typeof result.reply !== 'string' || !result.reply.trim()) throw new Error('empty');
       return { ok: true, reply: result.reply.slice(0, 6000) };
@@ -137,9 +140,9 @@ async function handle(message, sender) {
     return { ok: true, settings: { ...NEO_CONFIG.defaults, ...local.neoSettings }, task: active ? { ...checkpointSummary(active), pinnedAt: active.createdAt } : null, isTaskTab: active?.tabId === sender.tab?.id && active?.url === sender.tab?.url, checkpointCount: (local[CHECKPOINTS_KEY] || []).length };
   }
   // Summon requests from the extension popup use the current active tab, not page input.
-  if (['neo:summon-active', 'neo:capture-active', 'neo:saved-active'].includes(message.type) && !sender.tab) {
+  if (['neo:summon-active', 'neo:capture-active', 'neo:saved-active', 'neo:chat-active'].includes(message.type) && !sender.tab) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    return summon(tab?.id, message.type === 'neo:capture-active' ? 'neo:capture' : message.type === 'neo:saved-active' ? 'neo:show-saved' : 'neo:summon');
+    return summon(tab?.id, message.type === 'neo:capture-active' ? 'neo:capture' : message.type === 'neo:saved-active' ? 'neo:show-saved' : message.type === 'neo:chat-active' ? 'neo:open-chat' : 'neo:summon');
   }
   return { ok: false };
 }

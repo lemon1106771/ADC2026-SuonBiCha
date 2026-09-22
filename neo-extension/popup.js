@@ -30,6 +30,7 @@ async function launch(type) {
   } catch { status.textContent = 'Refresh the extension and try again.'; }
 }
 document.getElementById('summon').addEventListener('click', () => launch('neo:summon-active'));
+document.getElementById('chat').addEventListener('click', () => launch('neo:chat-active'));
 document.getElementById('capture').addEventListener('click', () => launch('neo:capture-active'));
 document.getElementById('open-saved').addEventListener('click', () => launch('neo:saved-active'));
 document.getElementById('resume').addEventListener('click', async () => { await save({ snoozeUntil: 0 }); status.textContent = 'Nudges resumed when proactive help is enabled.'; });

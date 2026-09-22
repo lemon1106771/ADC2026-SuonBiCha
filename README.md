@@ -13,7 +13,7 @@ Reload the extension after changing code, then reopen its workspace. Opening `da
 
 ## Cursor companion
 
-The website companion has both quick actions and chat:
+The website companion has both quick actions and chat. **Chat with Neo** in the toolbar opens chat directly on the current website; **Chat with Neo** in the demo workspace opens a full-size conversation:
 
 - **Capture an area** lets you drag a region (or use arrows, Shift + arrows, and Enter), review its screenshot, name it, and save a checkpoint. **Saved** lists up to 12 local checkpoints. **Return** activates the matching tab or reopens its URL, then highlights the saved region; if the page has changed, the position may be approximate. Escape cancels capture.
 - **Focus an area** lets you click a paragraph or field; Neo highlights it and dims the rest of the page. Escape or **Clear focus** restores the page.
@@ -26,7 +26,9 @@ Proactive nudges are based on observable events rather than inferred feelings: t
 
 ## Optional AI chat
 
-The extension works without AI. To enable open-ended chat, copy `server/.env.example` to `server/.env`, add your API key and the extension ID shown at the bottom of Neo’s popup, then run `npm run start:ai`. In the popup, enable **AI chat**. The local proxy uses the OpenAI Responses API with `store: false`; the API key remains in the server and is never bundled into the extension. Messages are sent only when you press **Send**, and attached text is sent only after you explicitly attach it.
+The extension works without AI. To enable open-ended chat, create a DeepSeek API key in your [DeepSeek account](https://platform.deepseek.com/api_keys). Copy `server/.env.example` to `server/.env`, set `DEEPSEEK_API_KEY` to that key, and set `NEO_EXTENSION_ID` to the ID shown at the bottom of Neo’s popup. Run `npm run start:ai`. In the popup, enable **AI chat**. Use **Chat with Neo** on a website or in the demo workspace. The local proxy calls `deepseek-flash` in non-thinking mode by default; the API key remains in the server and is never bundled into the extension. Messages are sent only when you press **Send**, and website text is sent only after you explicitly attach it. Workspace chat sends only text you type. Conversations disappear when the tab closes or reloads.
+
+The proxy limits each reply to 450 tokens and each conversation request to 12,000 characters. It pauses AI chat once its estimated DeepSeek spending reaches $1. The estimate uses DeepSeek's peak `deepseek-flash` prices and token usage returned by the API; it reserves a conservative amount before each call. The running total is stored in the ignored `server/.chat-usage.json` file and survives server restarts. This limits Neo's own calls, not other uses of your DeepSeek account, and provider prices can change. Check your DeepSeek balance during the demo. After changing `.env` or updating the extension, restart the local server and reload Neo at `chrome://extensions`. Existing `OPENAI_API_KEY`, `OPENAI_MODEL`, `GEMINI_API_KEY`, or `GEMINI_MODEL` entries are ignored and can be removed from your private `.env` once you no longer need them.
 
 ## Rehearse the demo
 

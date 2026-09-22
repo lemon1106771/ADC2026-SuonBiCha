@@ -85,6 +85,30 @@ test('popup opens the bundled extension workspace', async () => {
   dom.window.document.getElementById('open-workspace').click(); await Promise.resolve();
   assert.equal(opened, 'chrome-extension://test/dashboard.html');
 });
+test('workspace chat sends typed conversation, renders replies as text, and clears on restart', async () => {
+  const s = setup(), requests = [];
+  s.w.chrome = { runtime: { sendMessage: async message => { requests.push(message); return { ok: true, reply: '<img src=x onerror=alert(1)> Start here.' }; } } };
+  s.view('chat'); s.$('workspace-chat-input').value = 'Help me begin';
+  s.$('workspace-chat-form').dispatchEvent(new s.w.Event('submit', { bubbles: true, cancelable: true }));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(JSON.parse(JSON.stringify(requests[0].messages)), [{ role: 'user', content: 'Help me begin' }]);
+  assert.equal(s.$('workspace-chat-log').querySelector('img'), null);
+  assert.match(s.$('workspace-chat-log').textContent, /Start here/);
+  s.$('workspace-chat-input').value = 'And then?';
+  s.$('workspace-chat-form').dispatchEvent(new s.w.Event('submit', { bubbles: true, cancelable: true }));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests[1].messages.length, 3);
+  s.click('restart'); assert.equal(s.$('workspace-chat-log').textContent, ''); s.w.close();
+});
+test('workspace chat keeps the draft when the AI server is unavailable', async () => {
+  const s = setup(); s.w.chrome = { runtime: { sendMessage: async () => ({ ok: false, error: 'Server offline.' }) } };
+  s.view('chat'); s.$('workspace-chat-input').value = 'My draft';
+  s.$('workspace-chat-form').dispatchEvent(new s.w.Event('submit', { bubbles: true, cancelable: true }));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.$('workspace-chat-input').value, 'My draft');
+  assert.match(s.$('workspace-chat-status').textContent, /Server offline/);
+  assert.equal(s.$('workspace-chat-send').disabled, false); s.w.close();
+});
 test('manifest and asset references are local and present', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));
   assert.equal(manifest.manifest_version, 3); assert.deepEqual(manifest.host_permissions, ['http://*/*', 'https://*/*', 'http://127.0.0.1/*']);
