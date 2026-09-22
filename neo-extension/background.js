@@ -1,5 +1,6 @@
 'use strict';
 importScripts('companion-config.js');
+importScripts('work-store.js');
 
 const CHECKPOINTS_KEY = 'neoCheckpoints';
 const ACTIVE_KEY = 'neoActiveCheckpointId';
@@ -68,6 +69,14 @@ async function summon(tabId, type = 'neo:summon') {
 }
 
 async function handle(message, sender) {
+  if (message.type === 'neo:work') return neoWork(message);
+  if (message.type === 'neo:health') {
+    try {
+      const response = await fetch('http://127.0.0.1:4318/health', { headers: { 'X-Neo-Extension': chrome.runtime.id }, signal: AbortSignal.timeout(3000), credentials: 'omit' });
+      const result = await response.json();
+      return response.ok ? { ok: true, ...result } : { ok: false, error: result.error || 'Check the extension ID in server/.env.' };
+    } catch { return { ok: false, error: 'Start the local AI server to connect.' }; }
+  }
   if (message.type === 'neo:checkpoint-capture') {
     if (!sender.tab?.id || !normalPage(sender.tab.url)) return { ok: false, error: 'Capture works on normal website tabs.' };
     const [active] = await chrome.tabs.query({ active: true, windowId: sender.tab.windowId });
@@ -123,12 +132,12 @@ async function handle(message, sender) {
     try {
       const response = await fetch('http://127.0.0.1:4318/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Neo-Extension': chrome.runtime.id },
-        body: JSON.stringify({ messages: history }), signal: AbortSignal.timeout(12_000), credentials: 'omit'
+        body: JSON.stringify({ messages: history, mode: message.mode || 'chat', preferences: { detail: neoSettings.detail, format: neoSettings.format, tone: neoSettings.tone } }), signal: AbortSignal.timeout(32_000), credentials: 'omit'
       });
-      if (!response.ok) throw new Error('unavailable');
       const result = await response.json();
+      if (!response.ok) return { ok: false, error: result.error || 'AI is unavailable. Try again.' };
       if (typeof result.reply !== 'string' || !result.reply.trim()) throw new Error('empty');
-      return { ok: true, reply: result.reply.slice(0, 6000) };
+      return { ok: true, reply: result.reply.slice(0, 6000), steps: result.steps, draft: result.draft };
     } catch { return { ok: false, error: 'AI chat is unavailable. Check the local server and its API key. Your quick actions still work.' }; }
   }
   if (message.type === 'neo:state') {

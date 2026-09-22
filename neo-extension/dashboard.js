@@ -72,10 +72,21 @@ $('onboarding-form').addEventListener('focusout', () => { queueMicrotask(() => {
 document.addEventListener('pointerdown', event => { if (view === 'onboarding' && !event.target.closest('.field')) { clearSpotlight(); Neo.rest(); } });
 $('onboarding-form').addEventListener('submit', event => { event.preventDefault(); clearSpotlight(); Neo.rest(); $('form-status').textContent = 'Demo details kept in this tab. You can keep editing.'; });
 $('restart').addEventListener('click', () => {
+  resetBackup = { draft: $('report-draft').value, fields: [...document.querySelectorAll('#onboarding-form input')].map(input => [input.id, input.value]) };
+  undoReset.hidden = false;
   clearInterval(meetingTimer); meetingTimer = null; awaySince = null; calendarIndex = 0;
   meeting = { start: '11:00', end: '11:30', people: ['Lan', 'Alex'] }; renderMeeting(); $('change-note').hidden = true;
   $('onboarding-form').reset(); $('form-status').textContent = 'Demo entries stay in this tab until you restart or close it.';
   $('report-draft').value = ''; $('save-status').textContent = 'Session draft'; holdPlace($('initial-line'));
   $('meeting-status').textContent = 'Next meeting in —'; $('join-call').hidden = true; $('call-dialog').close();
   changeView('report'); window.scrollTo({ top: 0, behavior: 'instant' });
+  persistDraft();
 });
+// The older demo remains usable, with recovery for accidental reset and reload.
+let resetBackup = null;
+const undoReset = document.createElement('button'); undoReset.className = 'text-button'; undoReset.textContent = 'Undo cleared entries'; undoReset.hidden = true;
+$('restart').after(undoReset);
+function persistDraft() { try { localStorage.setItem('neo-dashboard-draft', $('report-draft').value); } catch { $('save-status').textContent = 'Not saved — keep this tab open'; } }
+try { $('report-draft').value = localStorage.getItem('neo-dashboard-draft') || ''; if ($('report-draft').value) $('save-status').textContent = 'Restored draft'; } catch { /* Storage may be unavailable. */ }
+$('report-draft').addEventListener('input', persistDraft);
+undoReset.addEventListener('click', () => { if (!resetBackup) return; $('report-draft').value = resetBackup.draft; for (const [id, value] of resetBackup.fields) $(id).value = value; persistDraft(); undoReset.hidden = true; resetBackup = null; });

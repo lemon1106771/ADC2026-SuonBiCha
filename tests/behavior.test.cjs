@@ -74,7 +74,7 @@ test('restart clears all data and cancels an active countdown', () => {
   assert.equal(s.$('join-call').hidden, true); assert.equal(s.$('change-note').hidden, true);
   assert.equal(s.$('neo-bubble').hidden, true); assert.equal(s.$('neo-ring').hidden, true); s.w.close();
 });
-test('popup opens the bundled extension workspace', async () => {
+test('popup opens the real workplace page where the extension can run', async () => {
   const dom = new JSDOM(fs.readFileSync(path.join(root, 'popup.html'), 'utf8'), { runScripts: 'outside-only' });
   let opened;
   const close = dom.window.close.bind(dom.window);
@@ -83,7 +83,7 @@ test('popup opens the bundled extension workspace', async () => {
   dom.window.eval(fs.readFileSync(path.join(root, 'companion-config.js'), 'utf8'));
   dom.window.eval(fs.readFileSync(path.join(root, 'popup.js'), 'utf8'));
   dom.window.document.getElementById('open-workspace').click(); await Promise.resolve();
-  assert.equal(opened, 'chrome-extension://test/dashboard.html');
+  assert.equal(opened, 'http://127.0.0.1:4319');
 });
 test('manifest and asset references are local and present', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));

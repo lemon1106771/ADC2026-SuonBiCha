@@ -1,5 +1,11 @@
 # Neo · ADC Hackathon 2026
 
+## Current prototype: your work, your way
+
+Start with [the functional prototype guide](PROTOTYPE.md). The primary flow is now **understand a real message → review editable steps → choose a next step → draft a workplace question**, using the cursor companion on normal websites. No diagnosis is required. Preferences control explanation detail, format, tone, cursor following and reminder timing.
+
+Run `npm run start:workplace` for the editable workplace example at `http://127.0.0.1:4319`. Load the extension in Chrome and configure the separate AI server as described in the guide. AI explanations, step generation and drafts use actual provider requests; missing configuration is reported, never replaced with pretend AI. Saved plans and drafts persist locally. The earlier dashboard below remains a secondary simulation.
+
 A Manifest V3 Chrome extension based on `neo-build-proposal.md`, extended with a cursor companion, browser-wide quick actions, and optional AI chat. Plain HTML, CSS, and JavaScript with no extension build step or account system. Local actions work offline; AI chat uses a separate local server.
 
 ## Run in Chrome

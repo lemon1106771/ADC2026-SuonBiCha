@@ -1,6 +1,6 @@
 {
   "name": "neo-extension-checks",
   "private": true,
-  "scripts": { "test": "node --test --test-isolation=none tests/*.test.cjs", "start:ai": "node --env-file=server/.env server/server.mjs" },
+  "scripts": { "test": "node --test --test-isolation=none tests/*.test.cjs", "start:ai": "node --env-file=server/.env server/server.mjs", "start:workplace": "node server/workplace.mjs" },
   "devDependencies": { "jsdom": "^26.1.0" }
 }

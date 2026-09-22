@@ -14,6 +14,7 @@ async function companion(options = {}) {
   let root, now = 1000, hidden = false, focused = true, intervals = new Map(), nextId = 0;
   let settings = { demoMode: true, ...options.settings }, task = options.task || null, checkpoints = [], activeId = null, captureWasHidden = false;
   const messages = [], messageListeners = new Set(), storageListeners = new Set();
+  const work = background(options.workStorage || { local: {}, session: {} });
   const attach = w.Element.prototype.attachShadow;
   w.Element.prototype.attachShadow = function (args) { root = attach.call(this, args); return root; };
   w.Date.now = () => now; w.setInterval = fn => { intervals.set(++nextId, fn); return nextId; }; w.clearInterval = id => intervals.delete(id);
@@ -27,6 +28,7 @@ async function companion(options = {}) {
   w.chrome = {
     runtime: { onMessage: { addListener: fn => messageListeners.add(fn), removeListener: fn => messageListeners.delete(fn) }, sendMessage: async message => {
       messages.push(JSON.parse(JSON.stringify(message)));
+      if (message.type === 'neo:work') return work.request(message);
       if (message.type === 'neo:state') return { ok: true, settings, task, isTaskTab: task?.tabId === 1 };
       if (message.type === 'neo:checkpoint-list') return { ok: true, items: checkpoints, activeId };
       if (message.type === 'neo:checkpoint-capture') { captureWasHidden = d.getElementById('neo-companion-root').style.visibility === 'hidden'; return { ok: true, image: 'data:image/png;base64,dGVzdA==' }; }
@@ -79,6 +81,65 @@ test('cursor companion summons, freezes while open, and preserves the page', asy
   assert.ok(s.messages.some(m => m.type === 'neo:checkpoint-save'));
   s.click('restore'); await settle(); assert.ok(s.messages.some(m => m.type === 'neo:checkpoint-return'));
   assert.equal(s.d.getElementById('work').style.cssText, ''); s.dispose();
+});
+
+test('generated steps require review, preserve edits and persist across companion reloads', async () => {
+  const storage = { local: {}, session: {} };
+  const s = await companion({ workStorage: storage, settings: { aiEnabled: true }, chatResponse: { ok: true, reply: 'Here are suggested steps.', steps: ['Ask about the deadline', 'Read the customer notes'] } });
+  s.summon(); s.root.querySelector('[data-mode=steps]').click(); await s.chat('Plan this unfamiliar task');
+  assert.equal(s.messages.find(m => m.type === 'neo:chat').mode, 'steps');
+  assert.equal(storage.local.neoWorkState, undefined);
+  s.$('workflow-result').querySelector('textarea').value = 'Ask Alex about the review time';
+  s.$('workflow-result').querySelector('button').click(); await settle();
+  assert.equal(storage.local.neoWorkState.steps[0].text, 'Ask Alex about the review time');
+  assert.equal(s.$('pane-plan').hidden, false);
+  s.$('plan-list').querySelectorAll('button')[1].click(); await settle();
+  assert.match(s.$('work-current').textContent, /Ask Alex/);
+  s.w.eval(source('content.js')); await settle();
+  assert.equal(s.$('plan-list').querySelectorAll('textarea').length, 2); s.dispose();
+});
+
+test('draft review never sends a message and saves locally only on request', async () => {
+  const storage = { local: {}, session: {} };
+  const s = await companion({ workStorage: storage, settings: { aiEnabled: true }, chatResponse: { ok: true, reply: 'Review this draft.', draft: 'Could you confirm which task takes priority?' } });
+  s.summon(); s.root.querySelector('[data-mode=draft]').click(); await s.chat('Ask about priorities');
+  s.$('workflow-result').querySelector('button').click();
+  assert.match(s.$('work-draft').value, /priority/); assert.equal(storage.local.neoWorkState, undefined);
+  s.click('draft-save'); await settle(); assert.match(storage.local.neoWorkState.draft, /priority/);
+  assert.equal(s.messages.filter(m => m.type === 'neo:chat').length, 1); s.dispose();
+});
+
+test('failed AI request retains the typed question and attached text for a manual retry', async () => {
+  const s = await companion({ settings: { aiEnabled: true }, chatResponse: { ok: false, error: 'No connection.' } });
+  s.select(); s.summon(); s.click('attach'); await s.chat('Explain the request');
+  assert.equal(s.$('chat-input').value, 'Explain the request');
+  assert.match(s.$('attachment').textContent, /First sentence/);
+  assert.equal(s.messages.filter(m => m.type === 'neo:chat').length, 1); s.dispose();
+});
+
+test('focus selection supports arrows and Enter without changing website styles', async () => {
+  const s = await companion();
+  for (const element of [s.d.getElementById('work'), s.d.getElementById('other')]) element.getClientRects = () => [{ width: 100, height: 30 }];
+  s.summon(); s.click('focus');
+  s.d.dispatchEvent(new s.w.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+  assert.equal(s.d.getElementById('other').dataset.scrolled, 'true');
+  s.d.dispatchEvent(new s.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  assert.match(s.$('message').textContent, /Area focused/);
+  assert.equal(s.d.getElementById('other').getAttribute('style'), null); s.dispose();
+});
+
+test('local plan serializes concurrent additions, restores deletion, and rejects stale draft saves', async () => {
+  const storage = { local: {}, session: {} }, b = background(storage);
+  await Promise.all(['First', 'Second'].map(text => b.request({ type: 'neo:work', action: 'add', steps: [text] })));
+  assert.equal(storage.local.neoWorkState.steps.length, 2);
+  const id = storage.local.neoWorkState.steps[0].id;
+  await b.request({ type: 'neo:work', action: 'remove', id });
+  await b.request({ type: 'neo:work', action: 'undo' });
+  assert.equal(storage.local.neoWorkState.steps[0].id, id);
+  await b.request({ type: 'neo:work', action: 'draft', text: 'My draft', revision: 0 });
+  const conflict = await b.request({ type: 'neo:work', action: 'draft', text: 'Stale draft', revision: 0 });
+  assert.equal(conflict.ok, false); assert.equal(storage.local.neoWorkState.draft, 'My draft');
+  assert.equal((await background(storage).request({ type: 'neo:work', action: 'get' })).state.draft, 'My draft');
 });
 test('capture can be adjusted and cancelled with the keyboard without saving', async () => {
   const s = await companion(); s.summon(); s.click('hold');
